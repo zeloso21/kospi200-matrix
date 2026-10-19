@@ -149,7 +149,7 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
     items.push({key: '현재가', label: '', v: price, kind: 'now'});
     items.sort((a, b) => b.v - a.v);
     const lv = items.map(l => `<div class="lv ${l.kind}"><span class="lab">${l.key}${l.label ? ' · ' + l.label : ''}</span><span class="num">${f2(l.v)}</span></div>`).join('');
-    const baseTxt = k === 'D' ? (m.base.date === m.cur.date ? '오늘 봉(다음 날용)' : '어제 봉') : m.base.expiry ? `직전 주기 ${ymd(m.base.date).slice(5)}~${ymd(m.base.end).slice(5)}` : '직전 연도';
+    const baseTxt = k === 'D' ? (d.market_closed ? `${ymd(m.base.date).slice(5)} 확정 봉(다음 날용)` : '오늘 진행 중 봉(엑셀과 같이 장중 계속 바뀜)') : m.base.expiry ? `직전 주기 ${ymd(m.base.date).slice(5)}~${ymd(m.base.end).slice(5)}` : '직전 연도';
     const sub = m.cur.expiry ? `${ymd(m.cur.date).slice(5)}~${ymd(m.cur.end).slice(5)} · 만기 ${ymd(m.cur.expiry).slice(5)}` : ymd(m.cur.date) + ' 기준';
     return `<div class="card ladder"><h2>${PN[k]}<small>${sub}</small></h2>${lv}
       <div class="meta">피벗 기준: ${baseTxt} · P ${f2(m.pivot)}<br>start line <span class="num">${f2(m.start_line)}</span><br>

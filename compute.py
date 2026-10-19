@@ -134,8 +134,9 @@ def main():
     for per, bs in allb.items():
         if len(bs) < 11:
             raise SystemExit(f"{per} 데이터 부족 {len(bs)}")
-        # 일간은 장 마감 뒤엔 오늘 봉으로 다음 날 기준선(엑셀이 마감 때 하던 방식), 장중엔 어제 봉 기준
-        base = bs[-1] if (per == "D" and closed) else bs[-2]
+        # 일간은 엑셀 D Matrix처럼 늘 오늘(진행 중) 봉 기준 — 피벗=(오늘 고가+저가+현재가)/3라 장중엔 계속 바뀌고 마감 값이 다음 날용.
+        # 2026-10-20 사용자 요청으로 장중 '어제 봉' 고정 방식에서 엑셀과 똑같이 변경. 주·월·연은 엑셀도 직전 기간 봉
+        base = bs[-1] if per == "D" else bs[-2]
         m = matrix(bs, base, price)
         m["name"] = NAMES[per]
         data["periods"][per] = m
