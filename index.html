@@ -99,7 +99,7 @@ summary{cursor:pointer;color:var(--ink2);font-size:13px}
       <b>start line</b>: 피벗 P − (직전 기간 종가 − 이번 기간 시가). 갭만큼 피벗을 옮긴 출발선입니다.<br>
       <b>e/high · e/low(예상 고점·저점)</b>: ① best/re(또는 best/sup) ② 시가 ± 최근 10기간 평균 '시가→고가(저가)' 폭 ③ 중심선 ± 평균 '고가−저가' 폭의 절반 — 세 값의 평균입니다.<br>
       <b>추세 판정</b>: 현재가가 그 기간 중심선과 5기간 종가 평균 둘 다 위면 강세, 둘 다 아래면 약세, 엇갈리면 중립(코드 규칙, 원래 엑셀은 손으로 적은 판정).<br>
-      <b>원본 엑셀과 다른 점</b>: 주·월·년은 달력 기준(월~금, 1일~말일, 1~12월)입니다. 원본 엑셀의 주간·월간 표엔 옵션 만기 주기와 손으로 넣은 값이 섞여 있어 그 두 칸은 숫자가 다를 수 있고, 일간·연간 기준선은 같은 공식이라 일치합니다.<br>
+      <b>기간 구분(엑셀과 같음)</b>: 주간 = 금요일~목요일(주간옵션 목요일 만기), 월간 = 월물 만기(둘째 목요일) 다음 날~다음 달 만기일, 연간 = 1~12월. 주·월 봉은 일봉을 묶어 계산합니다. 엑셀에서 시가를 손으로 넣은 칸이 있으면 e/high·e/low는 조금 다를 수 있고, 엑셀 주간표의 이번 주 고가·저가는 '최근 5거래일'로 잡혀 지난주 날짜가 섞여 있어 여기선 이번 주(금요일부터)만 씁니다.<br>
       투자 권유가 아니며, 계산 참고용입니다.
     </div>
   </div>
@@ -149,8 +149,9 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
     items.push({key: '현재가', label: '', v: price, kind: 'now'});
     items.sort((a, b) => b.v - a.v);
     const lv = items.map(l => `<div class="lv ${l.kind}"><span class="lab">${l.key}${l.label ? ' · ' + l.label : ''}</span><span class="num">${f2(l.v)}</span></div>`).join('');
-    const baseTxt = k === 'D' ? (m.base.date === m.cur.date ? '오늘 봉(다음 날용)' : '어제 봉') : '직전 ' + PN[k].replace('간', '') ;
-    return `<div class="card ladder"><h2>${PN[k]}<small>${ymd(m.cur.date)} 기준</small></h2>${lv}
+    const baseTxt = k === 'D' ? (m.base.date === m.cur.date ? '오늘 봉(다음 날용)' : '어제 봉') : m.base.expiry ? `직전 주기 ${ymd(m.base.date).slice(5)}~${ymd(m.base.end).slice(5)}` : '직전 연도';
+    const sub = m.cur.expiry ? `${ymd(m.cur.date).slice(5)}~${ymd(m.cur.end).slice(5)} · 만기 ${ymd(m.cur.expiry).slice(5)}` : ymd(m.cur.date) + ' 기준';
+    return `<div class="card ladder"><h2>${PN[k]}<small>${sub}</small></h2>${lv}
       <div class="meta">피벗 기준: ${baseTxt} · P ${f2(m.pivot)}<br>start line <span class="num">${f2(m.start_line)}</span><br>
       e/high <span class="num up">${f2(m.e_high)}</span> · e/low <span class="num dn">${f2(m.e_low)}</span><br>
       이평 상단 <span class="num">${f2(m.ma_up)}</span> · 하단 <span class="num">${f2(m.ma_dn)}</span></div></div>`;
@@ -163,8 +164,8 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
     document.getElementById('ma').innerHTML = '<tr><th></th><th>3MA</th><th>5MA</th><th>10MA</th><th>R(3)</th><th>R(5)</th><th>R(10)</th></tr>' +
       [['high', 'h', '고가'], ['close', 'c', '종가'], ['low', 'l', '저가']].map(([e, f, n]) =>
         `<tr><td>${n}</td>${[3, 5, 10].map(x => `<td class="num">${f2(m[f][x].v)}</td>`).join('')}${[3, 5, 10].map(x => `<td class="num ${cls(m[f][x].r)}">${sg(m[f][x].r)}</td>`).join('')}</tr>`).join('');
-    document.getElementById('recent').innerHTML = '<tr><th>날짜</th><th>시가</th><th>고가</th><th>저가</th><th>종가</th><th>시가→고가</th><th>시가→저가</th><th>고가−저가</th></tr>' +
-      P[k].recent.map(b => `<tr><td class="num">${ymd(b.date)}</td><td class="num">${f2(b.o)}</td><td class="num">${f2(b.h)}</td><td class="num">${f2(b.l)}</td><td class="num">${f2(b.c)}</td><td class="num">${f2(b.h - b.o)}</td><td class="num">${f2(b.o - b.l)}</td><td class="num">${f2(b.h - b.l)}</td></tr>`).join('');
+    document.getElementById('recent').innerHTML = '<tr><th>기간</th><th>시가</th><th>고가</th><th>저가</th><th>종가</th><th>시가→고가</th><th>시가→저가</th><th>고가−저가</th></tr>' +
+      P[k].recent.map(b => `<tr><td class="num">${b.end ? ymd(b.date).slice(2) + '~' + ymd(b.end).slice(5) : ymd(b.date)}</td><td class="num">${f2(b.o)}</td><td class="num">${f2(b.h)}</td><td class="num">${f2(b.l)}</td><td class="num">${f2(b.c)}</td><td class="num">${f2(b.h - b.o)}</td><td class="num">${f2(b.o - b.l)}</td><td class="num">${f2(b.h - b.l)}</td></tr>`).join('');
   };
   tabs.innerHTML = ['D', 'W', 'M', 'Y'].map(k => `<button data-k="${k}">${PN[k]}</button>`).join('');
   tabs.onclick = e => e.target.dataset.k && show(e.target.dataset.k);

@@ -5,7 +5,9 @@ D/W/월간/년간 Matrix와 '요약' 시트 계산을 한국투자증권 Open AP
 FHKUP03500100, 업종코드 2001=KOSPI200) 데이터로 옮긴 것. VM cron이 장중 30분마다 실행해 data.json을 만들고
 GitHub Pages(zeloso21/kospi200-matrix)가 그걸 읽어 요약 화면을 그림.
 
-엑셀과 다른 점: 기간은 달력 기준 주(월~금)·월·년 — 엑셀의 주·월은 손으로 넣은 옵션 만기 주기·선물 값이 섞여 있었음.
+기간은 엑셀과 같게 옵션 만기 주기(2026-10-19 사용자 요청): 주간 = 금요일~목요일(주간옵션 목요일 만기),
+월간 = 둘째 목요일(월물 만기) 다음 날 ~ 다음 달 둘째 목요일. 만기일이 휴장이면 그 전 거래일이 만기지만, 그 사이는 전부 휴장이라
+'목요일 기준 묶기'로 같은 결과. 주·월 봉은 일봉을 묶어 코드가 만듦(엑셀은 일부 시가를 손으로 넣어 시가가 다를 수 있음). 연간은 달력 연도.
 추세 판정도 엑셀은 손으로 적은 SELL/BUY라, 여기선 '현재가가 중심선·5기간 평균 위/아래'로 코드가 판정.
 """
 import datetime
@@ -17,8 +19,8 @@ sys.path.insert(0, "/home/user/kis_agent")
 import daily_flow_cafe as df  # noqa: E402  (KIS 인증·조회 재사용)
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
-BACK = {"D": 60, "W": 200, "M": 1000, "Y": 8000}
-NAMES = {"D": "일간", "W": "주간", "M": "월간", "Y": "연간"}
+BACK = {"Y": 8000}
+NAMES = {"D": "일간", "W": "주간(금~목, 주간옵션 만기)", "M": "월간(월물 만기 주기)", "Y": "연간"}
 
 
 def bars(kis, per, today):
@@ -30,6 +32,52 @@ def bars(kis, per, today):
     out = [{"date": r["stck_bsop_date"], "o": float(r["bstp_nmix_oprc"]), "h": float(r["bstp_nmix_hgpr"]),
             "l": float(r["bstp_nmix_lwpr"]), "c": float(r["bstp_nmix_prpr"])} for r in rows]
     return sorted(out, key=lambda b: b["date"])
+
+
+def daily_long(kis, today, days=430):
+    """월간 10기간+기준 1기간을 덮는 일봉. 한 번에 받는 행 수에 한도가 있어 60일씩 나눠 받음."""
+    got, end = {}, today
+    start = today - datetime.timedelta(days=days)
+    while end > start:
+        s = max(start, end - datetime.timedelta(days=60))
+        j = kis.get("/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100",
+                    {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": "2001", "FID_INPUT_DATE_1": s.strftime("%Y%m%d"),
+                     "FID_INPUT_DATE_2": end.strftime("%Y%m%d"), "FID_PERIOD_DIV_CODE": "D"})
+        for r in j.get("output2") or []:
+            if r.get("stck_bsop_date") and float(r.get("bstp_nmix_oprc") or 0) > 0:
+                got[r["stck_bsop_date"]] = {"date": r["stck_bsop_date"], "o": float(r["bstp_nmix_oprc"]), "h": float(r["bstp_nmix_hgpr"]),
+                                            "l": float(r["bstp_nmix_lwpr"]), "c": float(r["bstp_nmix_prpr"])}
+        end = s - datetime.timedelta(days=1)
+    return [got[k] for k in sorted(got)]
+
+
+def second_thu(y, m):
+    d = datetime.date(y, m, 1)
+    return d + datetime.timedelta(days=(3 - d.weekday()) % 7 + 7)
+
+
+def expiry_key(day, per):
+    """그 거래일이 속한 만기 주기의 (명목) 만기일."""
+    d = datetime.datetime.strptime(day, "%Y%m%d").date()
+    if per == "W":  # 월(0)~목(3)은 이번 주 목요일, 금(4)은 다음 주 목요일
+        return d + datetime.timedelta(days=(3 - d.weekday()) % 7)
+    e = second_thu(d.year, d.month)
+    if d > e:
+        y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+        e = second_thu(y, m)
+    return e
+
+
+def expiry_bars(daily, per):
+    groups = {}
+    for b in daily:
+        groups.setdefault(expiry_key(b["date"], per), []).append(b)
+    out = []
+    for k in sorted(groups):
+        g = groups[k]
+        out.append({"date": g[0]["date"], "end": g[-1]["date"], "expiry": k.strftime("%Y%m%d"), "days": len(g),
+                    "o": g[0]["o"], "h": max(b["h"] for b in g), "l": min(b["l"] for b in g), "c": g[-1]["c"]})
+    return out[1:]  # 맨 앞 주기는 받은 일봉 범위에 잘려 있을 수 있어 버림
 
 
 def avg(xs):
@@ -78,7 +126,8 @@ def main():
     now = datetime.datetime.now()
     kis = df.Kis()
     data = {"updated": now.strftime("%Y-%m-%d %H:%M"), "periods": {}}
-    allb = {per: bars(kis, per, now.date()) for per in ("D", "W", "M", "Y")}
+    daily = daily_long(kis, now.date())
+    allb = {"D": daily[-60:], "W": expiry_bars(daily, "W"), "M": expiry_bars(daily, "M"), "Y": bars(kis, "Y", now.date())}
     d = allb["D"]
     price = d[-1]["c"]
     closed = now.time() >= datetime.time(15, 35) or now.weekday() >= 5 or d[-1]["date"] != now.strftime("%Y%m%d")
