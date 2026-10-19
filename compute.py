@@ -127,6 +127,9 @@ def main():
     kis = df.Kis()
     data = {"updated": now.strftime("%Y-%m-%d %H:%M"), "periods": {}}
     daily = daily_long(kis, now.date())
+    # 장 시작(09:00) 전에도 KIS가 오늘 날짜로 시고저종=전일 종가인 빈 봉을 줌(2026-10-20 08:40 실측) → 빼고 전 거래일 마감 기준 유지
+    if now.time() < datetime.time(9, 0) and daily and daily[-1]["date"] == now.strftime("%Y%m%d"):
+        daily = daily[:-1]
     allb = {"D": daily[-60:], "W": expiry_bars(daily, "W"), "M": expiry_bars(daily, "M"), "Y": bars(kis, "Y", now.date())}
     d = allb["D"]
     price = d[-1]["c"]
