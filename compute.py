@@ -2,7 +2,7 @@
 
 C:\\연습\\KODEX200_트레이딩\\kospi200matrix_*.xlsx(하나증권 HTS DDE로 실시간 값을 받던 엑셀)의
 D/W/월간/년간 Matrix와 '요약' 시트 계산을 한국투자증권 Open API(모의서버 업종 기간별시세
-FHKUP03500100, 업종코드 2001=KOSPI200) 데이터로 옮긴 것. VM cron이 장중 30분마다 실행해 data.json을 만들고
+FHKUP03500100, 업종코드 2001=KOSPI200) 데이터로 옮긴 것. VM cron이 장중 5분마다 실행해 data.json을 만들고
 GitHub Pages(zeloso21/kospi200-matrix)가 그걸 읽어 요약 화면을 그림.
 
 기간은 엑셀과 같게 옵션 만기 주기(2026-10-19 사용자 요청): 주간 = 금요일~목요일(주간옵션 목요일 만기),
@@ -84,7 +84,7 @@ def avg(xs):
     return sum(xs) / len(xs) if xs else 0.0
 
 
-def matrix(bs, base, price):
+def matrix(bs, base, price, per):
     """엑셀 Matrix 시트 계산. base=피벗 기준 봉(직전 기간), cur=진행 중인 기간 봉."""
     cur = bs[-1]
     p = (base["h"] + base["l"] + base["c"]) / 3
@@ -98,11 +98,21 @@ def matrix(bs, base, price):
               ("support", "지지", (mid + best_sup) / 2), ("low/1", "", low1),
               ("low/2", "", (low1 + best_sup) / 2), ("best/sup", "최대 지지", best_sup)]
     last10 = bs[-10:]
-    oh = avg([b["h"] - b["o"] for b in last10])
-    ol = avg([b["o"] - b["l"] for b in last10])
-    hl = avg([b["h"] - b["l"] for b in last10])
-    e_high = (best_re + (cur["o"] + oh) + (mid + hl / 2)) / 3
-    e_low = (best_sup + (cur["o"] - ol) + (mid - hl / 2)) / 3
+    if per == "D":
+        # 2026-10-20 사용자 요청으로 엑셀 D Matrix 평균 범위 그대로: 시가→고가·시가→저가는 26~34행(오늘 포함 9일),
+        # 고가−저가는 25~34행(25행 '현재'와 26행이 같은 오늘이라 오늘이 두 번 들어간 10개)
+        seg = bs[-9:]
+        oh = avg([b["h"] - b["o"] for b in seg])
+        ol = avg([b["o"] - b["l"] for b in seg])
+        hl = avg([cur["h"] - cur["l"]] + [b["h"] - b["l"] for b in seg])
+    else:  # 주·월·연은 엑셀도 이번 기간 포함 10기간(21~30행)
+        oh = avg([b["h"] - b["o"] for b in last10])
+        ol = avg([b["o"] - b["l"] for b in last10])
+        hl = avg([b["h"] - b["l"] for b in last10])
+    # 엑셀 W Matrix의 I14·I15는 중심선 대신 지난 주기 종가(E22)에 진폭 절반을 더하고 뺌 — 엑셀과 같게 둠
+    anchor = base["c"] if per == "W" else mid
+    e_high = (best_re + (cur["o"] + oh) + (anchor + hl / 2)) / 3
+    e_low = (best_sup + (cur["o"] - ol) + (anchor - hl / 2)) / 3
     ma = {}
     for n in (3, 5, 10):
         seg = bs[-n:]
@@ -140,7 +150,7 @@ def main():
         # 일간은 엑셀 D Matrix처럼 늘 오늘(진행 중) 봉 기준 — 피벗=(오늘 고가+저가+현재가)/3라 장중엔 계속 바뀌고 마감 값이 다음 날용.
         # 2026-10-20 사용자 요청으로 장중 '어제 봉' 고정 방식에서 엑셀과 똑같이 변경. 주·월·연은 엑셀도 직전 기간 봉
         base = bs[-1] if per == "D" else bs[-2]
-        m = matrix(bs, base, price)
+        m = matrix(bs, base, price, per)
         m["name"] = NAMES[per]
         data["periods"][per] = m
     data["price"] = price
