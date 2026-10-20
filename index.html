@@ -64,7 +64,7 @@ summary{cursor:pointer;color:var(--ink2);font-size:13px}
       <div><span id="price" class="price num">-</span> <span id="chg" class="chg num"></span></div>
       <div id="ohl" class="ohl num"></div>
     </div>
-    <div class="ohl" style="margin-left:auto;text-align:right">갱신 <span id="upd" class="num"></span><br>한국투자증권 Open API · 장중 30분마다</div>
+    <div class="ohl" style="margin-left:auto;text-align:right">갱신 <span id="upd" class="num"></span><br>한국투자증권 Open API · 장중 5분마다</div>
   </div>
 
   <div class="trend" id="trend"></div>
@@ -171,6 +171,9 @@ fetch('data.json?t=' + Date.now()).then(r => r.json()).then(d => {
   tabs.onclick = e => e.target.dataset.k && show(e.target.dataset.k);
   show('D');
 }).catch(e => { document.body.insertAdjacentHTML('afterbegin', '<p style="padding:16px">데이터를 불러오지 못했습니다: ' + e + '</p>'); });
+// 2026-10-20 장중엔 화면을 1분마다 다시 불러 5분 갱신값을 따라감(창이 보일 때만)
+setInterval(() => { const n = new Date(), m = n.getHours() * 60 + n.getMinutes();
+  if (document.visibilityState === 'visible' && n.getDay() >= 1 && n.getDay() <= 5 && m >= 539 && m <= 950) location.reload(); }, 60000);
 </script>
 </body>
 </html>
